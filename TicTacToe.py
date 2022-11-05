@@ -1,6 +1,7 @@
 import sys
 import pygame
 import pickle
+import random
 
 '''
 PREPARE
@@ -30,12 +31,13 @@ for i in range(BOARD_SIZE):
         cell_pos[id][0] = j * cell_size
         cell_pos[id][1] = i * cell_size
 just_check = []
-
+match_count = 1
 '''
 GAME UI
 '''
 def check_Cell(_mouse_Cell):
     global board_xor
+    global just_check
     if len(_mouse_Cell) == 0:
         return False
     if cell_val[_mouse_Cell[1]][_mouse_Cell[0]] == 0:
@@ -99,13 +101,28 @@ def draw_screen():
         screen.blit(text_surface, (size[0] // 3, 0))
     pygame.display.flip()
 
+def rematch():
+    with open("config.xor_value" , "wb") as wf:
+        pickle.dump(xor_val_data, wf)
+        rf.close()
+    global turn, board_xor, match_count
+    turn = 0
+    for i in range(BOARD_SIZE):
+        for j in range(BOARD_SIZE):
+            cell_val[i][j] = 0
+    just_check.clear()
+    board_xor = 0
+    print("Match done")
+    match_count += 1
+
 '''
 AI CODE
 '''
 dx = [0, 1, 1, -1]
 dy = [1, 0, 1, 1]
 
-ai_score = {tuple([1, 1, 1, 0, 0]) : 50,
+score = [ 0,
+        ({tuple([1, 1, 1, 0, 0]) : 50,
          tuple([0, 0, 1, 1, 1]) : 50,
          tuple([0, 1, 1, 1, 0]) : 500,
          tuple([0, 1, 0, 1, 1, 0]) : 500000,
@@ -116,9 +133,8 @@ ai_score = {tuple([1, 1, 1, 0, 0]) : 50,
          tuple([1, 1, 1, 0, 1]) : 500000000,
          tuple([1, 1, 1, 1, 0]) : 500000000,
          tuple([0, 1, 1, 1, 1, 0]) : 5000000000,
-         tuple([1, 1, 1, 1, 1]): 5000000000000}
-
-player_score = {tuple([2, 2, 2, 0, 0]) : 50,
+         tuple([1, 1, 1, 1, 1]): 5000000000000}),
+        ({tuple([2, 2, 2, 0, 0]) : 50,
          tuple([0, 0, 2, 2, 2]) : 50,
          tuple([0, 2, 2, 2, 0]) : 500,
          tuple([0, 2, 0, 2, 2, 0]) : 500000,
@@ -129,7 +145,7 @@ player_score = {tuple([2, 2, 2, 0, 0]) : 50,
          tuple([2, 2, 2, 0, 2]) : 500000000,
          tuple([2, 2, 2, 2, 0]) : 500000000,
          tuple([0, 2, 2, 2, 2, 0]) : 5000000000,
-         tuple([2, 2, 2, 2, 2]): 5000000000000}
+         tuple([2, 2, 2, 2, 2]): 5000000000000})]
 
 adjx = [-1, -1, -1, 0, 0, 1, 1, 1]
 adjy = [-1, 0, 1, -1, 1, -1, 0, 1]
@@ -158,9 +174,16 @@ class AI:
                     if ch:
                         return True
         return False
+
+    def check_draw(self):
+        for i in range(BOARD_SIZE):
+            for j in range(BOARD_SIZE):
+                if cell[i][j]:
+                    return False
+        return True
     
     def get_score(self, x, y, le):
-        score = 0
+        total_score = 0
         for dir in range(4):
             st = []
             st.append(cell[x][y])
@@ -174,33 +197,37 @@ class AI:
                 else:
                     st.append(cell[nx][ny])
             st = tuple(st)
-            if st in ai_score.keys():
-                score += ai_score[st]
+            if st in score[self.turn].keys():
+                total_score += score[self.turn][st]
             
-            if st in player_score.keys():
-                score -= player_score[st]
-        return score
+            if st in score[3 - self.turn].keys():
+                total_score -= score[3 - self.turn][st]
+        return total_score
 
     def cal(self):
-        score = 0
+        total_score = 0
         for i in range(BOARD_SIZE):
             for j in range(BOARD_SIZE):
                 s5 = self.get_score(i, j, 5)
                 s6 = self.get_score(i, j, 6)
-                score += s5 + s6
-        return score
+                total_score += s5 + s6
+        return total_score
 
     def minimax(self, _depth, alpha, beta, maximize):
         global board_xor
-        if _depth == 0 or self.check_win():
+        if _depth == 0 or self.check_win() or self.check_draw():
             return [self.cal(), [-1, -1]]
 
-        mask = str(board_xor) + str(_depth)
+        mask = str(board_xor) + str(_depth) +str(maximize)
         if mask in xor_val_data.keys():
-            return xor_val_data.get(mask)
+            cd = xor_val_data.get(mask)
+            if len(cd[1]) == 2:
+                return cd
 
         if maximize:
+            tu = self.turn
             move = []
+            move.append([-1, -1])
             C_val = -1000000000000000
             for i in range(BOARD_SIZE):
                 for j in range(BOARD_SIZE):
@@ -208,22 +235,28 @@ class AI:
                     for dir in range(8):
                         nx = i + adjx[dir]
                         ny = j + adjy[dir]
-                        if nx == 0 or nx == BOARD_SIZE or ny == 0 or ny == BOARD_SIZE or cell[nx][ny] != 0:continue
-                        cell[nx][ny] = 1
-                        board_xor = board_xor ^ xor_val[nx][ny][1]
+                        if nx < 0 or nx == BOARD_SIZE or ny < 0 or ny == BOARD_SIZE or cell[nx][ny] != 0:continue
+                        cell[nx][ny] = tu
+                        board_xor = board_xor ^ xor_val[nx][ny][tu]
                         val = self.minimax(_depth - 1, alpha, beta, False) 
                         if C_val < val[0]:
                             C_val = val[0]
-                            move = [nx, ny]
+                            move.clear()
+                            move.append([nx, ny])
+                        elif C_val == val[0]:
+                            move.append([nx, ny])
                         alpha = max(alpha, val[0])
                         cell[nx][ny] = 0
-                        board_xor = board_xor ^ xor_val[nx][ny][1]
+                        board_xor = board_xor ^ xor_val[nx][ny][tu]
                         if beta <= alpha:
                             break
-            xor_val_data[mask] = [C_val, move]
-            return [C_val, move]
+            f_move = random.choice(move)
+            xor_val_data[mask] = [C_val, f_move]
+            return [C_val, f_move]
         else:
+            tu = 3 - self.turn
             move = []
+            move.append([-1, -1])
             C_val = 1000000000000000
             for i in range(BOARD_SIZE):
                 for j in range(BOARD_SIZE):
@@ -231,20 +264,24 @@ class AI:
                     for dir in range(8):
                         nx = i + adjx[dir]
                         ny = j + adjy[dir]
-                        if nx == 0 or nx == BOARD_SIZE or ny == 0 or ny == BOARD_SIZE or cell[nx][ny] != 0:continue
-                        cell[nx][ny] = 2
-                        board_xor = board_xor ^ xor_val[nx][ny][2]
+                        if nx < 0 or nx == BOARD_SIZE or ny < 0 or ny == BOARD_SIZE or cell[nx][ny] != 0:continue
+                        cell[nx][ny] = tu
+                        board_xor = board_xor ^ xor_val[nx][ny][tu]
                         val = self.minimax(_depth - 1, alpha, beta, True)
                         if C_val > val[0]:
                             C_val = val[0]
-                            move = [nx, ny]
+                            move.clear()
+                            move.append([nx, ny])
+                        elif C_val == val[0]:
+                            move.append([nx, ny])
                         beta = min(beta, val[0])
                         cell[nx][ny] = 0
-                        board_xor = board_xor ^ xor_val[nx][ny][2]
+                        board_xor = board_xor ^ xor_val[nx][ny][tu]
                         if beta <= alpha:
                             break
-            xor_val_data[mask] = [C_val, move]
-            return [C_val, move]
+            f_move = random.choice(move)
+            xor_val_data[mask] = [C_val, f_move]
+            return [C_val, f_move]
 
     def check_first_move(self):
         for i in range(BOARD_SIZE):
@@ -255,11 +292,11 @@ class AI:
 
     def make_move(self):
         if self.check_first_move():
-            return [7, 7]
+            return [int(random.random() * 6) + 5, int(random.random() * 6) + 5]
         else:
             return self.minimax(self.depth, -1000000000000000, 1000000000000000, True)[1]
 
-ai = AI(1)
+ai = [0, AI(1), AI(2)]
 
 '''
 GAME RUN
@@ -269,21 +306,19 @@ while True:
     mouseY = -1
     for event in pygame.event.get():
         if event.type == pygame.QUIT: 
-            if turn == 3 or turn == 4:
-                with open("config.xor_value" , "wb") as wf:
-                    pickle.dump(xor_val_data, wf)
-                    rf.close()
+            print(match_count)
             sys.exit()
         if event.type == pygame.MOUSEBUTTONDOWN:
             mouseX, mouseY = pygame.mouse.get_pos()
             break
     
+    '''
     if turn == 0:
         cell = cell_val.copy()
-        nmove = ai.make_move()
+        nmove = ai1.make_move()
         cell_val[nmove[0]][nmove[1]] = 1
         board_xor = board_xor ^ xor_val[nmove[0]][nmove[1]][1]
-        just_check = [nmove[0], nmove[1]]
+        just_check = nmove
         turn = (turn + 1) % 2
     elif turn == 1:
         mouse_Cell = []
@@ -292,7 +327,18 @@ while True:
         
         if check_Cell(mouse_Cell):
             turn = (turn + 1) % 2
-    
+    '''
+    if turn >= 3:
+        rematch()
+
+    cell = cell_val.copy()
+    nmove = ai[turn + 1].make_move()
+    print(nmove)
+    cell_val[nmove[0]][nmove[1]] = turn + 1
+    board_xor = board_xor ^ xor_val[nmove[0]][nmove[1]][turn + 1]
+    just_check = nmove
+    turn = (turn + 1) % 2
+
     if Check_winner():
         turn  = 3
     elif Check_draw():
