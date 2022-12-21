@@ -2,6 +2,7 @@ import pygame
 import sys
 import pickle
 import random
+import math
 
 pygame.init()
 game_font = pygame.font.Font(pygame.font.get_default_font(), 50)
@@ -110,14 +111,15 @@ class AI:
         self.sys = System()
         pass
 
-    def minimax(self, depth, board: TicTacToeBoard, alpha, beta, maximize):
+    def minimax(self, depth, board: TicTacToeBoard, alpha, beta, maximize, nullMove: bool):
         global count
         count = count + 1
         id = str(board.board_xor) + str(depth)
+        '''
         for data in cal_data:
             if data[0] == id:
                 return data[1]
-
+        '''
         if depth == 0 or self.sys.winner_check(board) or self.sys.draw_check(board):
             return (self.eval(board), [0, 0])
 
@@ -137,21 +139,35 @@ class AI:
                     if check:
                         avail_cell.append((i, j))
 
+#===============================================================================================#
+        if (nullMove and depth == 2):
+            value = self.minimax(depth - 1, board, alpha, beta, maximize, False)[0]
+            pos_move = []
+            if maximize: alpha = max(alpha, value[0])
+            else: beta = min(beta, value[0])
+            #board.board_xor = board.board_xor ^ cell_xor[x][y][self.turn]
+            #board.cell_val[x][y] = 0
+            if alpha < beta: 
+                cal_data.append((id,(value, pos_move)))
+                return (value, pos_move)
+#===============================================================================================#
+     
         if maximize:
-            value = -oo
+            value = (-oo, 0, 0)
             pos_move = []
             for pos in avail_cell:
                 x = pos[0]
                 y = pos[1]
                 board.cell_val[x][y] = self.turn
                 board.board_xor = board.board_xor ^ cell_xor[x][y][self.turn]
-                rvalue = self.minimax(depth - 1, board, alpha, beta, False)[0]
-                if rvalue > value:
+                rvalue = self.minimax(depth - 1, board, alpha, beta, False, nullMove)[0]
+
+                if rvalue[0] > value[0]:
                     value = rvalue
                     pos_move = []
                     pos_move.append(x)
                     pos_move.append(y)
-                alpha = max(alpha, value)
+                alpha = max(alpha, value[0])
                 board.board_xor = board.board_xor ^ cell_xor[x][y][self.turn]
                 board.cell_val[x][y] = 0
                 if alpha >= beta:
@@ -159,20 +175,20 @@ class AI:
             cal_data.append((id,(value, pos_move)))
             return (value, pos_move)
         else:
-            value = oo
+            value = (oo, 0, 0)
             pos_move = []
             for pos in avail_cell:
                 x = pos[0]
                 y = pos[1]
                 board.cell_val[x][y] = 3 - self.turn
                 board.board_xor = board.board_xor ^ cell_xor[x][y][3-self.turn]
-                rvalue = self.minimax(depth - 1, board, alpha, beta, True)[0]
-                if rvalue < value:
+                rvalue = self.minimax(depth - 1, board, alpha, beta, True, nullMove)[0]
+                if rvalue[0] < value[0]:
                     value = rvalue
                     pos_move = []
                     pos_move.append(x)
                     pos_move.append(y)
-                beta = min(beta, value)
+                beta = min(beta, value[0])
                 board.board_xor = board.board_xor ^ cell_xor[x][y][3-self.turn]
                 board.cell_val[x][y] = 0
                 if alpha >= beta:
@@ -180,40 +196,6 @@ class AI:
             cal_data.append((id,(value, pos_move)))
             return (value, pos_move)
     
-    def minimaxNullmove(self, depth, board: TicTacToeBoard, alpha, beta, maximize):
-        global count
-        count = count + 1
-
-        avail_cell = []
-        for i in range(board.BOARD_SIZE):
-            for j in range(board.BOARD_SIZE):
-                if board.cell_val[i][j] == 0:
-                    check = False
-                    for k1 in range(-1,2):
-                        for k2 in range(-1,2):
-                            if k1 == 0 and k2 == 0: continue
-                            ni = i + k1
-                            nj = j + k2
-                            if ni < 0 or ni >= board.BOARD_SIZE or nj < 0 or nj >= board.BOARD_SIZE:continue
-                            if board.cell_val[ni][nj]:
-                                check = True
-                    if check:
-                        avail_cell.append((i, j))
-        value = oo
-        n_move = []
-        for pos in avail_cell:
-            x = pos[0]
-            y = pos[1]
-            board.cell_val[x][y] = 3 - self.turn
-            board.board_xor = board.board_xor ^ cell_xor[x][y][3-self.turn]
-            rvalue = self.minimax(depth, board, alpha, beta, True)
-            if rvalue[0] < value:
-                value = rvalue[0]
-                n_move = list(rvalue[1])
-            beta = min(beta, value)
-            board.board_xor = board.board_xor ^ cell_xor[x][y][3-self.turn]
-            board.cell_val[x][y] = 0
-        return (rvalue, n_move)
 
     def eval(self, board: TicTacToeBoard):
         ai_score = 0
@@ -228,7 +210,7 @@ class AI:
                 for dir in range(4):
                     enemy_score = enemy_score + self.cal(i, j, board, dir, 3 - self.turn)
 
-        return ai_score - enemy_score * self.style
+        return (ai_score - enemy_score * self.style, ai_score, enemy_score)
     
     def cal(self, px, py, board: TicTacToeBoard, dir, turn):
         shape = []
@@ -258,17 +240,20 @@ class AI:
         global count
         if start == False:
             start = True
-            n_move = [int(random.random()*4) + 4, int(random.random()*4)+4]
+            #n_move = [int(random.random()*4) + 4, int(random.random()*4)+4]
+            n_move = [4, 6]
             return n_move
-        '''
-        val1 = self.minimaxNullmove(3, board, -oo, oo, True)
-        print("With Nullmove:", count)
+        
+        val1 = self.minimax(4, board, -oo, oo, True, True)
+        print("With Nullmove:", count, val1[1], val1[0][0], val1[0][1], val1[0][2])
         count = 0
-        return val1[1]'''
-        val2 = self.minimax(3, board, -oo, oo, True)
-        print("Without Nullmove:", count)
+        #return val1[1]
+        
+        val2 = self.minimax(4, board, -oo, oo, True, False)
+        print("Without Nullmove:", count, val2[1], val2[0][0], val2[0][1], val2[0][2])
         count = 0
-        return val2[1]
+        return val1[1]
+        
 
 #============================Main================================#
 board = TicTacToeBoard()
@@ -289,7 +274,8 @@ def restart_match():
 def run():
     global turn
     global count
-    ai = [0, AI(1, 0.5), AI(2, 1.5)]
+    #ai = [0, AI(1, 0.5), AI(2, 1.5)]
+    ai = [0, AI(1, 1), AI(2, 1)]
     vshuman = False
     playerturn = 2
     while True:
